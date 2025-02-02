@@ -6,16 +6,29 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
 from dotenv import load_dotenv
 from logger import logger
-from OpenAiAPI import OpenAiAPI
+from OpenAi import OpenAi
+from CachedWebElement import CachedWebElement
 import hashlib
 
 # TODO: make ai to memorize previous messages
 class FlirtBot:
+    # Constants for locators
+    SEARCH_BOX_LOCATOR = (By.XPATH, '//input[@placeholder="Search Messenger"]')
+    MESSAGE_BOX_LOCATOR = (By.XPATH, '//div[@aria-label="Message" and @contenteditable="true"]')
+    CHAT_CONTAINER_LOCATOR = (By.XPATH, '//div[contains(@class, "x78zum5 xdt5ytf x1iyjqo2 xs83m0k x1xzczws x6ikm8r x1odjw0f x1n2onr6 xh8yej3 xish69e")]')
+    MESSAGE_CONTAINER_LOCATOR = (By.XPATH, '//div[@class="x78zum5 xdt5ytf x1iyjqo2 x6ikm8r x1odjw0f xish69e x16o0dkt" and @role="none"]')
+    RECENT_CHATS_LOCATOR = (By.XPATH, './/div[2]/div/div[@class="x78zum5 xdt5ytf"]')
+    PERSON_NAME_LOCATOR = (By.XPATH, './/div/div/div/div[1]/a/div/div/div/div[2]/div/div/div/span/span')
+    UNREAD_MESSAGE_INDICATOR_LOCATOR = (By.XPATH, './/div/div/div/div[1]/a/div[1]/div/div/div[3]/div/div/div/div/span')
+    CHAT_ELEMENT_LOCATOR = (By.XPATH, './/div/div/div/div[1]/a/div[1]/div/div')
+    PRESENTATION_DIVS_LOCATOR = (By.XPATH, '//div[contains(@class, "html-div xdj266r x11i5rnm xat24cr x1mh8g0r x14ctfv x1okitfd x6ikm8r x10wlt62 xerhiuh x1pn3fxy x12xxe5f x1szedp3 x1n2onr6 x1vjfegm x1k4qllp x1mzt3pk x13faqbe")]')
+    MESSAGES_LOCATOR = (By.XPATH, '//div[@role="presentation"]//div[@dir="auto" and contains(@class, "x1gslohp")]')
     def __init__(self, driver):
         load_dotenv()
         self.openai_api_key = os.getenv("API_KEY")
         self.driver = driver
         self.exiting = False
+        self.element_wait_time = 30
 
     def exit(self):
         self.exiting = True
@@ -50,34 +63,12 @@ class FlirtBot:
             logger.info("Cookies saved.")      
 
     def search_user(self, user_name):
-        search_box = self.driver.find_element(By.XPATH, '//input[@placeholder="Search Messenger"]')
+        search_box = CachedWebElement(self.driver, (By.XPATH, '//input[@placeholder="Search Messenger"]'))
         search_box.send_keys(user_name)
         time.sleep(5)
         search_box.send_keys(Keys.ENTER)
         time.sleep(5)
         logger.info("Navigated to conversation.")
-
-    def wait_for_message_box(self):
-        try:
-            message_box = WebDriverWait(self.driver, 20).until(
-                EC.presence_of_element_located((By.XPATH, '//div[@aria-label="Message" and @contenteditable="true"]'))
-            )
-            logger.info("Message box found.")
-            return message_box
-        except TimeoutException:
-            logger.error("Message box not found.")
-            sys.exit("Exiting script due to TimeoutException.")
-
-    def wait_for_chat_container(self):
-        try:
-            chat_container = WebDriverWait(self.driver, 20).until(
-                EC.presence_of_element_located((By.XPATH, '//div[contains(@class, "x78zum5 xdt5ytf x1iyjqo2 xs83m0k x1xzczws x6ikm8r x1odjw0f x1n2onr6 xh8yej3 xish69e")]'))
-            )
-            logger.info("Chat container found.")
-            return chat_container
-        except TimeoutException:
-            logger.error("Chat container not found.")
-            sys.exit("Exiting script due to TimeoutException.")
 
     def message_sanitizer(self, message):
         message = re.sub(r'\s+', ' ', message).strip()
@@ -90,16 +81,18 @@ class FlirtBot:
         return message
 
     def check_recent_chats(self):
+        # Initialize OpenAI API
+        openai = OpenAi(api_key=self.openai_api_key)
         # Wait for the chat container to load
-        chat_container = self.wait_for_chat_container()
-        recent_chats = chat_container.find_elements(By.XPATH, './/div[2]/div/div[@class="x78zum5 xdt5ytf"]')
+        chat_container = CachedWebElement(self.driver, self.CHAT_CONTAINER_LOCATOR)
+
+        recent_chats = chat_container.find_elements(*self.RECENT_CHATS_LOCATOR)
         logger.info("total recent chats: " + str(len(recent_chats)))
         # Extract the top 5 recently chatted persons
         top_5_chats = recent_chats[:5]
 
         check_message_interval = 30
         latest_message = ""
-        openai = OpenAiAPI(api_key=self.openai_api_key)
         idle = False  # Flag to control idling
         idle_keyword = "idle"  # Keyword to idle the process
         continue_keyword = "continue"  # Keyword to continue processing
@@ -107,21 +100,24 @@ class FlirtBot:
         for chat in top_5_chats:
             # Check if there is a new message (e.g., unread message indicator)
             try:
-                person_name = chat.find_element(By.XPATH, './/div/div/div/div[1]/a/div/div/div/div[2]/div/div/div/span/span')
+                # get class name of the chat
+                person_name = chat.find_element(*self.PERSON_NAME_LOCATOR)
                 logger.info("Checking " + person_name.text)
                 # Check for unread message indicator
-                chat.find_element(By.XPATH, './/div/div/div/div[1]/a/div[1]/div/div/div[3]/div/div/div/div/span')
+                chat.find_element(*self.UNREAD_MESSAGE_INDICATOR_LOCATOR)
+                logger.info("Unread message found!")
                 # Navigate to the chat
-                chat_element = chat.find_element(By.XPATH, './/div/div/div/div[1]/a/div[1]/div/div')
+                chat_element = chat.find_element(*self.CHAT_ELEMENT_LOCATOR)
                 chat_element.click()
                 logger.info("Navigated to the chat.")
-                message_box = self.wait_for_message_box()
-                message_container = self.driver.find_element(By.XPATH, '//div[@class="x78zum5 xdt5ytf x1iyjqo2 x6ikm8r x1odjw0f xish69e x16o0dkt" and @role="none"]')
+                
+                message_box = CachedWebElement(self.driver, self.MESSAGE_BOX_LOCATOR)
+                message_container = CachedWebElement(self.driver, self.MESSAGE_CONTAINER_LOCATOR)
                 # Select divs with presentation role
-                presentation_divs = message_container.find_elements(By.XPATH, '//div[contains(@class, "html-div xdj266r x11i5rnm xat24cr x1mh8g0r x14ctfv x1okitfd x6ikm8r x10wlt62 xerhiuh x1pn3fxy x12xxe5f x1szedp3 x1n2onr6 x1vjfegm x1k4qllp x1mzt3pk x13faqbe")]')
+                presentation_divs = message_container.find_elements(*self.PRESENTATION_DIVS_LOCATOR)
                 logger.info(f"Found presentation div count: {len(presentation_divs)}")
                 # Find all messages in the chat
-                messages = message_container.find_elements(By.XPATH, '//div[@role="presentation"]//div[@dir="auto" and contains(@class, "x1gslohp")]')
+                messages = message_container.find_elements(*self.MESSAGES_LOCATOR)
                 logger.info(f"Found message count: {len(messages)}")
 
                 if messages:
@@ -156,7 +152,10 @@ class FlirtBot:
                         logger.info("Message is sent by me")
 
                 top_5_chats = recent_chats[:5]
-            except NoSuchElementException:
+            except StaleElementReferenceException:
+                logger.error("StaleElementReferenceException occurred.")
+                continue
+            except NoSuchElementException as e:
                 logger.info(f"No unread message found!")
                 continue
             except Exception as e:

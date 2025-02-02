@@ -16,7 +16,7 @@ def signal_handler(signal, frame, flirt_bot):
 
 def main():
     # Path to ChromeDriver
-    driver_path = r"C:\Users\thure\OneDrive\Desktop\Lab\FlirtBot\chromedriver-win64\chromedriver.exe"
+    driver_path = r"C:\Users\thure\OneDrive\Desktop\Lab\flirt-bot\chromedriver-win64\chromedriver.exe"
     # Create a FlirtBot instance
     flirt_bot = FlirtBot(web_driver.getDriver(driver_path=driver_path))
     proccess_interval = 30

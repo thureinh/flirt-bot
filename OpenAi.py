@@ -9,7 +9,7 @@ class NoChoicesReturnedError(Exception):
         self.body = body
         super().__init__(self.message)
 
-class OpenAiAPI:
+class OpenAi:
     def __init__(self, api_key, endpoint="https://api.openai.com/v1"):
         self.endpoint = endpoint
         self.client = OpenAI(
@@ -22,8 +22,12 @@ class OpenAiAPI:
         free_model = "deepseek/deepseek-r1:free"
         paid_model = "deepseek/deepseek-r1"
         logger.info(f"Sending message to OpenAI API: {message}")
+        instructions = """You are flirting with a girl. You are charming and confident.
+        Respond in a casual manner, keeping the response concise and without any breakdowns,
+        translations, or additional explanations. Your mother tongue is Burmese/Myanmar.
+        But you can also speak English and Japanese well."""
         messages = [
-            {"role": "system", "content": "You are flirting with a girl. You are charming and confident. Respond in a casual manner, keeping the response concise and without any breakdowns, translations, or additional explanations."},
+            {"role": "system", "content": instructions},
             {"role": "user", "content": message.strip()},
         ]
         try:
@@ -42,9 +46,9 @@ class OpenAiAPI:
 
             return completion.choices[0].message.content
         except openai.APIConnectionError as e:
-            logger.error("The server could not be reached: {e}.")
+            logger.error(f"The server could not be reached: {e}.")
         except (openai.APIStatusError, NoChoicesReturnedError) as e:
-            logger.error("Another non-200-range status code was received: {e}.")
+            logger.error(f"Another non-200-range status code was received: {e}.")
             try:
                 logger.info(f"Retrying with paid model: {paid_model}")
                 completion = self.client.chat.completions.create(
@@ -58,7 +62,7 @@ class OpenAiAPI:
                     raise NoChoicesReturnedError()
                 return completion.choices[0].message.content
             except openai.APIConnectionError as e:
-                logger.error("The server could not be reached: {e}.")
+                logger.error(f"The server could not be reached: {e}.")
             except (openai.APIStatusError, NoChoicesReturnedError) as e:
                 logger.error(f"Paid model also failed with error: {e}.")
                 raise e
