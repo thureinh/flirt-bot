@@ -1,0 +1,20 @@
+# Ignore Python bytecode files
+__pycache__/
+*.py[cod]
+
+# Ignore environment variables file
+.env
+
+# Ignore log files
+logs/
+*.log
+
+# Ignore Chrome and ChromeDriver files
+chrome-win64/
+chromedriver-win64/
+
+# Ignore cookies file
+cookies.pkl
+
+# Ignore virtual environment directory
+venv/
