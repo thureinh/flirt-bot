@@ -1,9 +1,7 @@
-import sys, time, os, pickle, re
+import time, os, pickle, re
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, NoSuchElementException, StaleElementReferenceException
+from selenium.common.exceptions import NoSuchElementException, StaleElementReferenceException
 from dotenv import load_dotenv
 from logger import logger
 from OpenAi import OpenAi
@@ -26,10 +24,11 @@ class FlirtBot:
     
     def __init__(self, driver):
         load_dotenv()
-        self.openai_api_key = os.getenv("API_KEY")
         self.driver = driver
         self.exiting = False
         self.element_wait_time = 30
+        # Initialize OpenAI API
+        self.openai = OpenAi(api_key=os.getenv("API_KEY"))
         chat_names_str = os.getenv("CHAT_NAMES")
         self.CHAT_NAMES = chat_names_str.split(",") if chat_names_str else []
 
@@ -66,7 +65,7 @@ class FlirtBot:
             logger.info("Cookies saved.")      
 
     def search_user(self, user_name):
-        search_box = CachedWebElement(self.driver, (By.XPATH, '//input[@placeholder="Search Messenger"]'))
+        search_box = CachedWebElement(self.driver, self.SEARCH_BOX_LOCATOR)
         search_box.send_keys(user_name)
         time.sleep(5)
         search_box.send_keys(Keys.ENTER)
@@ -84,8 +83,6 @@ class FlirtBot:
         return message
     
     def check_recent_chats(self):
-        # Initialize OpenAI API
-        openai = OpenAi(api_key=self.openai_api_key)
         # Wait for the chat container to load
         chat_container = CachedWebElement(self.driver, self.CHAT_CONTAINER_LOCATOR)
 
@@ -121,7 +118,6 @@ class FlirtBot:
                 
                 message_box = CachedWebElement(self.driver, self.MESSAGE_BOX_LOCATOR)
                 message_container = CachedWebElement(self.driver, self.MESSAGE_CONTAINER_LOCATOR)
-                # Select divs with presentation role
                 # TODO: think a way to handle stalement exception of find_elements method
                 # Find all messages in the chat
                 messages = message_container.find_elements(*self.MESSAGES_LOCATOR)
@@ -155,7 +151,7 @@ class FlirtBot:
                             continue
 
                         # Get response from the pretrained model
-                        reply_message = self.message_sanitizer(openai.chat(latest_message, person_id))
+                        reply_message = self.message_sanitizer(self.openai.chat(person_id, latest_message))
                         # Reply to the new message
                         message_box.send_keys(reply_message)
                         message_box.send_keys(Keys.ENTER)

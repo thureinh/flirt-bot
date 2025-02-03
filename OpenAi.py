@@ -41,11 +41,14 @@ class OpenAi:
         free_model = "deepseek/deepseek-r1:free"
         paid_model = "deepseek/deepseek-r1"
         logger.info(f"Sending message to OpenAI API: {message}")
+        
         instructions = """You are having a conversation. You do not want the conversation to end,
         so you ask questions about their interests and talk about them to keep the conversation going.
-        Respond in a casual manner, keeping the response smooth and interesting. 
+        Respond in a casual manner, keeping the response concise and without any breakdowns,
+        translations, or additional explanations. 
         Your mother tongue is Burmese/Myanmar. But you can also speak English and Japanese well."""
 
+        instructions = " ".join(instructions.split("\n"))
         system_message = {"role": "system", "content": instructions}
 
         # Append the new message to the person's conversation history
