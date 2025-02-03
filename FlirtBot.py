@@ -23,12 +23,15 @@ class FlirtBot:
     CHAT_ELEMENT_LOCATOR = (By.XPATH, './/div/div/div/div[1]/a/div[1]/div/div')
     PRESENTATION_DIVS_LOCATOR = (By.XPATH, '//div[contains(@class, "html-div xdj266r x11i5rnm xat24cr x1mh8g0r x14ctfv x1okitfd x6ikm8r x10wlt62 xerhiuh x1pn3fxy x12xxe5f x1szedp3 x1n2onr6 x1vjfegm x1k4qllp x1mzt3pk x13faqbe")]')
     MESSAGES_LOCATOR = (By.XPATH, '//div[@role="presentation"]//div[@dir="auto" and contains(@class, "x1gslohp")]')
+    
     def __init__(self, driver):
         load_dotenv()
         self.openai_api_key = os.getenv("API_KEY")
         self.driver = driver
         self.exiting = False
         self.element_wait_time = 30
+        chat_names_str = os.getenv("CHAT_NAMES")
+        self.CHAT_NAMES = chat_names_str.split(",") if chat_names_str else []
 
     def exit(self):
         self.exiting = True
@@ -79,7 +82,7 @@ class FlirtBot:
         # Remove non-BMP characters
         message = ''.join(c for c in message if c <= '\uFFFF')
         return message
-
+    
     def check_recent_chats(self):
         # Initialize OpenAI API
         openai = OpenAi(api_key=self.openai_api_key)
@@ -103,6 +106,11 @@ class FlirtBot:
                 # get class name of the chat
                 person_name = chat.find_element(*self.PERSON_NAME_LOCATOR)
                 logger.info("Checking " + person_name.text)
+                if person_name.text not in self.CHAT_NAMES:
+                    logger.info("Skipping " + person_name.text)
+                    continue
+                person_id = "person" + str(self.CHAT_NAMES.index(person_name.text))
+                logger.info("Person ID: " + person_id)
                 # Check for unread message indicator
                 chat.find_element(*self.UNREAD_MESSAGE_INDICATOR_LOCATOR)
                 logger.info("Unread message found!")
@@ -114,8 +122,7 @@ class FlirtBot:
                 message_box = CachedWebElement(self.driver, self.MESSAGE_BOX_LOCATOR)
                 message_container = CachedWebElement(self.driver, self.MESSAGE_CONTAINER_LOCATOR)
                 # Select divs with presentation role
-                presentation_divs = message_container.find_elements(*self.PRESENTATION_DIVS_LOCATOR)
-                logger.info(f"Found presentation div count: {len(presentation_divs)}")
+                # TODO: think a way to handle stalement exception of find_elements method
                 # Find all messages in the chat
                 messages = message_container.find_elements(*self.MESSAGES_LOCATOR)
                 logger.info(f"Found message count: {len(messages)}")
@@ -126,14 +133,20 @@ class FlirtBot:
                     logger.info(f"Latest message: <<{latest_message}>>")
 
                     # Check if the message is sent to you
+                    presentation_divs = message_container.find_elements(*self.PRESENTATION_DIVS_LOCATOR)
+                    logger.info(f"Found presentation div count: {len(presentation_divs)}")
                     if "x1xr0vuk" in presentation_divs[-1].get_attribute("class"):
                         logger.info("Message is sent to me")
                         # Check for idle and continue keywords
                         if idle_keyword in latest_message.lower():
                             idle = True
+                            message_box.send_keys("Idling the process.")
+                            message_box.send_keys(Keys.ENTER)
                             logger.info("Idling the process.")
                         elif continue_keyword in latest_message.lower():
                             idle = False
+                            message_box.send_keys("Continuing the process.")
+                            message_box.send_keys(Keys.ENTER)
                             logger.info("Continuing the process.")
 
                         # Skip processing if idle flag is set
@@ -142,7 +155,7 @@ class FlirtBot:
                             continue
 
                         # Get response from the pretrained model
-                        reply_message = self.message_sanitizer(openai.chat(latest_message))
+                        reply_message = self.message_sanitizer(openai.chat(latest_message, person_id))
                         # Reply to the new message
                         message_box.send_keys(reply_message)
                         message_box.send_keys(Keys.ENTER)
@@ -154,10 +167,11 @@ class FlirtBot:
                 top_5_chats = recent_chats[:5]
             except StaleElementReferenceException:
                 logger.error("StaleElementReferenceException occurred.")
-                continue
             except NoSuchElementException as e:
                 logger.info(f"No unread message found!")
-                continue
+            except IndexError as e:
+                logger.error(f"IndexError occurred")
             except Exception as e:
                 logger.error(f"Error: {e.__class__.__name__}: {e}")
+            finally:
                 continue
